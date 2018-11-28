@@ -3,6 +3,9 @@ import { logOut } from '../../utils/auth0';
 import './Profile.css';
 import Peer from 'peerjs';
 
+//import * as getScreenId from 'https://cdn.WebRTC-Experiment.com/getScreenId.js'
+//import "https://webrtc.github.io/adapter/adapter-latest.js"
+
 class Profile extends Component {
 
     state = {
@@ -16,7 +19,9 @@ class Profile extends Component {
     peer = new Peer();
 
     componentDidMount() {
+        
         this.props.fetchUser(this.props.token);
+        console.log(this)
         this.initPeerJS();
     }
 
@@ -49,6 +54,8 @@ class Profile extends Component {
                         : ( <div>
                                 <input type="text" ref={(el) => this.input = el}/>
                                 <button onClick={this.openConnection}>Call</button>
+                                <button onClick={this.screenShare}>Screen Share</button>
+                                
                             </div> )
                     }
 
@@ -105,7 +112,8 @@ class Profile extends Component {
         const peerId = this.input.value;
         navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
 
-        navigator.getUserMedia({video: true, audio: true}, (stream) => {
+        navigator.getUserMedia({video: {mediaSource: 'screen'}, audio: true}, (stream) => {
+            console.log(stream) 
             const mediaConnection = this.peer.call(peerId, stream);
 
             //On successful connection
@@ -134,6 +142,71 @@ class Profile extends Component {
         });
     }
 
+    screenShare = () => {
+        const instance = this;
+        const peerId = this.input.value;
+
+        console.log(navigator)
+        window.getScreenId(function (error, sourceId, screen_constraints) {
+            console.log(error, sourceId, screen_constraints)
+
+            if(sourceId && sourceId != 'firefox') {
+                screen_constraints = {
+                    video: {
+                        mandatory: {
+                            chromeMediaSource: 'screen',
+                            maxWidth: 1920,
+                            maxHeight: 1080,
+                            minAspectRatio: 1.77
+                        }
+                    }
+                };
+         
+                if (error === 'permission-denied') return alert('Permission is denied.');
+                if (error === 'not-chrome') return alert('Please use chrome.');
+         
+                if (!error && sourceId) {
+                    screen_constraints.video.mandatory.chromeMediaSource = 'desktop';
+                    screen_constraints.video.mandatory.chromeMediaSourceId = sourceId;
+                }
+            }
+            
+            navigator.mediaDevices.getUserMedia(screen_constraints).then(function (stream) {
+                console.log(stream)
+                //document.querySelector('video').src = URL.createObjectURL(stream);
+                const mediaConnection = instance.peer.call(peerId, stream);
+
+                //On successful connection
+                mediaConnection.on('stream', function(mediaStream) {
+                    //Display stream in video element
+                    instance.video.srcObject = mediaStream;
+                    instance.video.onloadedmetadata = function(e) {
+                        instance.video.play();
+                    };
+
+                    //Store connection objects locally
+                    instance.setState({
+                        session: {
+                            mediaConnection,
+                            stream
+                        }
+                    });
+                });
+
+                //On disconnection
+                mediaConnection.on('close', function() {
+                    instance.closeConnection();
+                })
+                    //
+
+            }).catch(function (error) {
+                console.error(error);
+            });
+        });
+
+    }
+
+
     closeConnection = () => {
         const session = this.state.session;
 
@@ -151,5 +224,9 @@ class Profile extends Component {
         });
     }
 }
+
+    
+
+
 
 export default Profile;
